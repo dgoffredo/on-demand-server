@@ -102,7 +102,7 @@ function Backend({
     if (child === undefined) {
       // Create the "backend" child process, and prefix each line of its
       // output.
-      child = child_process.spawn(command[0], command.slice(1));
+      child = child_process.spawn(command[0], command.slice(1), {detached: true});
       spawning = true;
       child.on('spawn', () => {
         per_line({
@@ -154,7 +154,7 @@ function Backend({
 
   function terminate() {
     if (child !== undefined) {
-      child.kill();
+      child.kill(); // TODO: process.kill(-child_process_group_id, SIGTERM)
       child = undefined;
       somebody_connected = false;
     }
