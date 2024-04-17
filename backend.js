@@ -154,7 +154,10 @@ function Backend({
 
   function terminate() {
     if (child !== undefined) {
-      child.kill(); // TODO: process.kill(-child_process_group_id, SIGTERM)
+      // Send SIGTERM to the child process's entire process group.
+      // The process group is the same as the process ID, because we used
+      // `{detached: true}` in the options to `child_process.spawn`.
+      process.kill(-child.pid, 'SIGTERM');
       child = undefined;
       somebody_connected = false;
     }
