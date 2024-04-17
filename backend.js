@@ -40,7 +40,13 @@ function Backend({
   port,
   // Amount of time, in milliseconds, to allow the child process to survive
   // without clients.
-  ms_to_linger = 0
+  ms_to_linger,
+  // The maximum amount of times, per incoming connection, to try to connect to
+  // the newly spawned backend child process.  Once we know that somebody has
+  // connected, we don't retry anymore.
+  max_connection_attempts,
+  // Amount of time, in milliseconds, between connection attempts.
+  ms_between_connection_attempts
 }) {
   let child;
   // true: `child` is a child process, but it hasn't started yet.
@@ -114,7 +120,7 @@ function Backend({
       connect_with_retries({
         net_connect: () => net.connect(port, host),
         max_attempts,
-        ms_between_attempts: 500,
+        ms_between_attempts: ms_between_connection_attempts,
         on_error: errors => {
           decrement();
           on_error(errors);
@@ -132,13 +138,13 @@ function Backend({
         spawning = false;
         // We don't know when the child process is ready to accept connections,
         // so we immediately try to connect, but allow for some retries.
-        do_connect({max_attempts: 6});
+        do_connect({max_attempts: max_connection_attempts});
       });
     } else if (!somebody_connected) {
       // The child process has spawned, but nobody has connected to it yet.
       // We're still not sure whether it's ready to accept connections, so
       // allow for some retries.
-      do_connect({max_attempts: 6});
+      do_connect({max_attempts: max_connection_attempts});
     } else {
       // The "backend" child process is already running and somebody has
       // connected to it before, so connect to it without retries.

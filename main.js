@@ -17,7 +17,9 @@ const backend = Backend({
   command: options.command,
   host: options.backend_host,
   port: options.backend_port,
-  ms_to_linger: 5000 // TODO: add option
+  ms_to_linger: 5000,  // TODO: make configurable
+  max_connection_attempts: 6,  // TODO: make configurable
+  ms_between_connection_attempts: 500  // TODO: make configurable
 });
 
 const server = net.createServer(client => {
@@ -25,7 +27,7 @@ const server = net.createServer(client => {
   backend.connect({
     on_error: errors => {
       client.end();
-      console.error('oh noes! ', errors); // TODO
+      console.error('unable to connect to backend: ', errors);
     },
     on_ready: server => {
       server.pipe(client);
