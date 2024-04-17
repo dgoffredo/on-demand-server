@@ -35,7 +35,7 @@ function Backend({
   command,
   // The host on which `command` listens.  This must be a local address, but
   // isn't necessarily '127.0.0.1'.
-  host = '127.0.0.1',
+  host,
   // The port on which `command` listens.
   port,
   // Amount of time, in milliseconds, to allow the child process to survive
@@ -46,6 +46,9 @@ function Backend({
   // true: `child` is a child process, but it hasn't started yet.
   // false: Either `child` isn't a child process, or it started already.
   let spawning = false;
+  // true: Some client has successfully connected to the current value of
+  // `child`.  Afterward, we don't bother with retries on connect. 
+  let somebody_connected = false;
 
   // TODO: document
   const {increment, decrement} = (() => {
@@ -62,11 +65,13 @@ function Backend({
 
     function increment() {
       ++num_open_connections;
+      console.log(`num_open_connections incremented to ${num_open_connections}`);
       clear_kill_timer();
     }
 
     function decrement() {
       --num_open_connections;
+      console.log(`num_open_connections decremented to ${num_open_connections}`);
       if (num_open_connections !== 0) {
         return;
       }
@@ -89,7 +94,8 @@ function Backend({
     increment();
   
     if (child === undefined) {
-      // Create the "backend" child process.
+      // Create the "backend" child process, and prefix each line of its
+      // output.
       child = child_process.spawn(command[0], command.slice(1));
       spawning = true;
       child.on('spawn', () => {
@@ -104,51 +110,47 @@ function Backend({
       });
     }
 
+    function do_connect({max_attempts}) {
+      connect_with_retries({
+        net_connect: () => net.connect(port, host),
+        max_attempts,
+        ms_between_attempts: 500,
+        on_error: errors => {
+          decrement();
+          on_error(errors);
+        },
+        on_ready: sock => {
+          somebody_connected = true;
+          sock.on('close', decrement);
+          on_ready(sock);
+        }
+      });
+    }
+
     if (spawning) {
       child.on('spawn', () => {
         spawning = false;
         // We don't know when the child process is ready to accept connections,
         // so we immediately try to connect, but allow for some retries.
-        connect_with_retries({
-          net_connect: () => net.connect(port, host),
-          max_attempts: 6,
-          ms_between_attempts: 500,
-          on_error: errors => {
-            decrement();
-            on_error(errors);
-          },
-          on_ready: sock => {
-            sock.on('close', decrement);
-            on_ready(sock);
-          }
-        });
+        do_connect({max_attempts: 6});
       });
-
-      return;
+    } else if (!somebody_connected) {
+      // The child process has spawned, but nobody has connected to it yet.
+      // We're still not sure whether it's ready to accept connections, so
+      // allow for some retries.
+      do_connect({max_attempts: 6});
+    } else {
+      // The "backend" child process is already running and somebody has
+      // connected to it before, so connect to it without retries.
+      do_connect({max_attempts: 1});
     }
-
-    // The "backend" child process is already running, so connect to it without
-    // retries.
-    const sock = net.connect(port, host);
-    const events = EventManager(sock);
-
-    events.on('ready', () => {
-      events.clear();
-      sock.on('close', decrement);
-      on_ready(sock);
-    });
-
-    events.on('error', error => {
-      events.clear();
-      decrement();
-      on_error([error]);
-    });
   }
 
   function terminate() {
     if (child !== undefined) {
       child.kill();
       child = undefined;
+      somebody_connected = false;
     }
   }
 
