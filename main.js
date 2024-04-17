@@ -32,6 +32,7 @@ const server = net.createServer(client => {
     on_ready: server => {
       server.pipe(client);
       client.pipe(server);
+      client.on('close', () => server.destroy());
     }
   });
 });
